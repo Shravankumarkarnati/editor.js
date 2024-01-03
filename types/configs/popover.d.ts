@@ -15,7 +15,7 @@ interface PopoverItemBase {
   /**
    * Additional displayed text
    */
-  secondaryLabel?: string;
+  secondaryLabel?: string | HTMLElement;
 
   /**
    * True if item should be highlighted as active
@@ -71,7 +71,7 @@ export interface PopoverItemWithoutConfirmation extends PopoverItemBase {
    * @param item - activated item
    * @param event - event that initiated item activation
    */
-  onActivate: (item: PopoverItem, event?: PointerEvent) => void;
+  onActivate: (item: PopoverItem, element: HTMLElement, event?: PointerEvent) => void;
 }
 
 /**

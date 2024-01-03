@@ -189,9 +189,14 @@ export class PopoverItem {
     }));
 
     if (params.secondaryLabel) {
-      el.appendChild(Dom.make('div', PopoverItem.CSS.secondaryTitle, {
-        textContent: params.secondaryLabel,
-      }));
+      if (params.secondaryLabel instanceof HTMLElement) {
+        const secondaryLabel = Dom.make('div', PopoverItem.CSS.secondaryTitle);
+
+        secondaryLabel.appendChild(params.secondaryLabel);
+        el.appendChild(secondaryLabel);
+      } else {
+        el.appendChild(Dom.make('div', PopoverItem.CSS.secondaryTitle, { textContent: params.secondaryLabel }));
+      }
     }
 
     if (params.isActive) {
@@ -254,7 +259,7 @@ export class PopoverItem {
   /**
    * Disables special focus and hover behavior
    */
-  private disableSpecialHoverAndFocusBehavior(): void  {
+  private disableSpecialHoverAndFocusBehavior(): void {
     this.removeSpecialFocusBehavior();
     this.removeSpecialHoverBehavior();
 
@@ -283,7 +288,7 @@ export class PopoverItem {
   private activateOrEnableConfirmationMode(item: PopoverItemParams): void {
     if (item.confirmation === undefined) {
       try {
-        item.onActivate(item);
+        item.onActivate(item, this.nodes.root);
         this.disableConfirmationMode();
       } catch {
         this.animateError();
