@@ -37,6 +37,7 @@ import Renderer from './renderer';
 import Saver from './saver';
 import Tools from './tools';
 import UI from './ui';
+import ToolsAPI from './api/tools';
 
 export default {
   // API Modules
@@ -55,6 +56,7 @@ export default {
   StylesAPI,
   ToolbarAPI,
   TooltipAPI,
+  ToolsAPI,
   UiAPI,
 
   // Toolbar Modules

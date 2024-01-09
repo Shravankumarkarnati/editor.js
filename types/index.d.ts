@@ -28,6 +28,7 @@ import {
   Tooltip,
   I18n,
   Ui,
+  Tools,
 } from './api';
 
 import { OutputData } from './data-formats';
@@ -115,6 +116,7 @@ export interface API {
   toolbar: Toolbar;
   inlineToolbar: InlineToolbar;
   tooltip: Tooltip;
+  tools: Tools;
   i18n: I18n;
   readOnly: ReadOnly;
   ui: Ui;
@@ -135,6 +137,7 @@ declare class EditorJS {
   public selection: Selection;
   public styles: Styles;
   public toolbar: Toolbar;
+  public tools: Tools;
   public inlineToolbar: InlineToolbar;
   public readOnly: ReadOnly;
   constructor(configuration?: EditorConfig|string);
