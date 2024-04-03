@@ -201,12 +201,12 @@ export default class Tools extends Module {
         class: MoveUpTune,
         isInternal: true,
       },
-      delete: {
-        class: DeleteTune,
-        isInternal: true,
-      },
       moveDown: {
         class: MoveDownTune,
+        isInternal: true,
+      },
+      delete: {
+        class: DeleteTune,
         isInternal: true,
       },
     };
