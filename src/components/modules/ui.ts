@@ -15,6 +15,8 @@ import { mobileScreenBreakpoint } from '../utils';
 
 import styles from '../../styles/main.css?inline';
 import { BlockHovered } from '../events/BlockHovered';
+import { selectionChangeDebounceTimeout } from '../constants';
+import { EditorMobileLayoutToggled } from '../events';
 /**
  * HTML Elements used for UI
  */
@@ -120,7 +122,7 @@ export default class UI extends Module<UINodes> {
     /**
      * Detect mobile version
      */
-    this.checkIsMobile();
+    this.setIsMobile();
 
     /**
      * Make main UI elements
@@ -233,10 +235,21 @@ export default class UI extends Module<UINodes> {
   }
 
   /**
-   * Check for mobile mode and cache a result
+   * Check for mobile mode and save the result
    */
-  private checkIsMobile(): void {
-    this.isMobile = window.innerWidth < mobileScreenBreakpoint;
+  private setIsMobile(): void {
+    const isMobile = window.innerWidth < mobileScreenBreakpoint;
+
+    if (isMobile !== this.isMobile) {
+      /**
+       * Dispatch global event
+       */
+      this.eventsDispatcher.emit(EditorMobileLayoutToggled, {
+        isEnabled: this.isMobile,
+      });
+    }
+
+    this.isMobile = isMobile;
   }
 
   /**
@@ -350,7 +363,6 @@ export default class UI extends Module<UINodes> {
     /**
      * Handle selection change to manipulate Inline Toolbar appearance
      */
-    const selectionChangeDebounceTimeout = 180;
     const selectionChangeDebounced = _.debounce(() => {
       this.selectionChanged();
     }, selectionChangeDebounceTimeout);
@@ -426,7 +438,7 @@ export default class UI extends Module<UINodes> {
     /**
      * Detect mobile version
      */
-    this.checkIsMobile();
+    this.setIsMobile();
   }
 
   /**
@@ -556,6 +568,11 @@ export default class UI extends Module<UINodes> {
    */
   private enterPressed(event: KeyboardEvent): void {
     const { BlockManager, BlockSelection } = this.Editor;
+
+    if (this.someToolbarOpened) {
+      return;
+    }
+
     const hasPointerToBlock = BlockManager.currentBlockIndex >= 0;
 
     /**
@@ -591,6 +608,10 @@ export default class UI extends Module<UINodes> {
        */
       const newBlock = this.Editor.BlockManager.insert();
 
+      /**
+       * Prevent default enter behaviour to prevent adding a new line (<div><br></div>) to the inserted block
+       */
+      event.preventDefault();
       this.Editor.Caret.setToBlock(newBlock);
 
       /**
