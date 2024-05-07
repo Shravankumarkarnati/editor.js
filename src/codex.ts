@@ -110,6 +110,13 @@ export default class EditorJS {
 
     this.destroy = destroy;
 
+    const mutations = {
+      pause: () => editor.moduleInstances.ModificationsObserver.disable(),
+      resume: () => editor.moduleInstances.ModificationsObserver.enable(),
+    };
+
+    this['mutations'] = mutations;
+
     Object.setPrototypeOf(this, editor.moduleInstances.API.methods);
 
     delete this.exportAPI;

@@ -142,6 +142,8 @@ declare class EditorJS {
   public readOnly: ReadOnly;
   constructor(configuration?: EditorConfig|string);
 
+  public mutations: { resume(): void; pause(): void };
+  
   /**
    * API shorthands
    */
