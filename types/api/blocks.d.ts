@@ -135,8 +135,13 @@ export interface Blocks {
    *
    * @param id - id of the block to update
    * @param data - the new data. Can be partial.
+   * @param tunes - new tunes data. Can be partial.
    */
-  update(id: string, data: Partial<BlockToolData>): Promise<BlockAPI>;
+  update(
+    id: string,
+    data: Partial<BlockToolData>,
+    tunes?: OutputBlockData["tunes"]
+  ): Promise<BlockAPI>;
 
   /**
    * Converts block to another type. Both blocks should provide the conversionConfig.

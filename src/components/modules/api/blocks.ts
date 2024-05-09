@@ -303,8 +303,13 @@ export default class BlocksAPI extends Module {
    *
    * @param id - id of the block to update
    * @param data - the new data
+   * @param tunes - new tunes data
    */
-  public update = async (id: string, data: Partial<BlockToolData>): Promise<BlockAPIInterface> => {
+  public update = async (
+    id: string,
+    data: Partial<BlockToolData>,
+    tunes?: OutputBlockData['tunes']
+  ): Promise<BlockAPIInterface> => {
     const { BlockManager } = this.Editor;
     const block = BlockManager.getBlockById(id);
 
@@ -312,7 +317,7 @@ export default class BlocksAPI extends Module {
       throw new Error(`Block with id "${id}" not found`);
     }
 
-    const updatedBlock = await BlockManager.update(block, data);
+    const updatedBlock = await BlockManager.update(block, data, tunes);
 
     // we cast to any because our BlockAPI has no "new" signature
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
