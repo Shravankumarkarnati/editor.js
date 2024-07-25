@@ -140,6 +140,7 @@ declare class EditorJS {
   public selection: Selection;
   public styles: Styles;
   public toolbar: Toolbar;
+  public tools: Tools;
   public inlineToolbar: InlineToolbar;
   public readOnly: ReadOnly;
   constructor(configuration?: EditorConfig|string);
