@@ -11,6 +11,7 @@ import ReadOnlyAPI from './api/readonly';
 import SanitizerAPI from './api/sanitizer';
 import SaverAPI from './api/saver';
 import SelectionAPI from './api/selection';
+import ToolsAPI from './api/tools';
 import StylesAPI from './api/styles';
 import ToolbarAPI from './api/toolbar';
 import TooltipAPI from './api/tooltip';
@@ -19,7 +20,6 @@ import UiAPI from './api/ui';
 
 /** ./toolbar */
 import BlockSettings from './toolbar/blockSettings';
-import ConversionToolbar from './toolbar/conversion';
 import Toolbar from './toolbar/index';
 import InlineToolbar from './toolbar/inline';
 
@@ -53,6 +53,7 @@ export default {
   SanitizerAPI,
   SaverAPI,
   SelectionAPI,
+  ToolsAPI,
   StylesAPI,
   ToolbarAPI,
   TooltipAPI,
@@ -61,7 +62,6 @@ export default {
 
   // Toolbar Modules
   BlockSettings,
-  ConversionToolbar,
   Toolbar,
   InlineToolbar,
 

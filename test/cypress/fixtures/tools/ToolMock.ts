@@ -1,9 +1,9 @@
-import { BlockTool, BlockToolConstructorOptions } from '../../../../types';
+import type { BlockTool, BlockToolConstructorOptions } from '../../../../types';
 
 /**
  * Simple structure for Tool data
  */
-interface MockToolData {
+export interface MockToolData {
   text: string;
 }
 

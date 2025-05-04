@@ -7,6 +7,8 @@ import SelectionUtils from '../selection';
 import Flipper from '../flipper';
 import type Block from '../block';
 import { areBlocksMergeable } from '../utils/blocks';
+import * as caretUtils from '../utils/caret';
+import { focus } from '@editorjs/caret';
 
 /**
  *
@@ -60,7 +62,7 @@ export default class BlockEvents extends Module {
      * @todo probably using "beforeInput" event would be better here
      */
     if (event.key === '/' && !event.ctrlKey && !event.metaKey) {
-      this.slashPressed();
+      this.slashPressed(event);
     }
 
     /**
@@ -89,12 +91,10 @@ export default class BlockEvents extends Module {
     /**
      * When user type something:
      *  - close Toolbar
-     *  - close Conversion Toolbar
      *  - clear block highlighting
      */
     if (_.isPrintableKey(event.keyCode)) {
       this.Editor.Toolbar.close();
-      this.Editor.ConversionToolbar.close();
 
       /**
        * Allow to use shortcuts with selected blocks
@@ -202,9 +202,9 @@ export default class BlockEvents extends Module {
    * @param {KeyboardEvent} event - keydown
    */
   private tabPressed(event: KeyboardEvent): void {
-    const { InlineToolbar, ConversionToolbar, Caret } = this.Editor;
+    const { InlineToolbar, Caret } = this.Editor;
 
-    const isFlipperActivated = ConversionToolbar.opened || InlineToolbar.opened;
+    const isFlipperActivated = InlineToolbar.opened;
 
     if (isFlipperActivated) {
       return;
@@ -233,8 +233,16 @@ export default class BlockEvents extends Module {
 
   /**
    * '/' keydown inside a Block
+   *
+   * @param event - keydown
    */
-  private slashPressed(): void {
+  private slashPressed(event: KeyboardEvent): void {
+    const wasEventTriggeredInsideEditor = this.Editor.UI.nodes.wrapper.contains(event.target as Node);
+
+    if (!wasEventTriggeredInsideEditor) {
+      return;
+    }
+
     const currentBlock = this.Editor.BlockManager.currentBlock;
     const canOpenToolbox = currentBlock.isEmpty;
 
@@ -249,6 +257,13 @@ export default class BlockEvents extends Module {
       return;
     }
 
+    /**
+     * The Toolbox will be opened with immediate focus on the Search input,
+     * and '/' will be added in the search input by default — we need to prevent it and add '/' manually
+     */
+    event.preventDefault();
+    this.Editor.Caret.insertContentAtCaretPosition('/');
+
     this.activateToolbox();
   }
 
@@ -260,6 +275,10 @@ export default class BlockEvents extends Module {
   private enter(event: KeyboardEvent): void {
     const { BlockManager, UI } = this.Editor;
     const currentBlock = BlockManager.currentBlock;
+
+    if (currentBlock === undefined) {
+      return;
+    }
 
     /**
      * Don't handle Enter keydowns when Tool sets enableLineBreaks to true.
@@ -279,39 +298,43 @@ export default class BlockEvents extends Module {
 
     /**
      * Allow to create line breaks by Shift+Enter
+     *
+     * Note. On iOS devices, Safari automatically treats enter after a period+space (". |") as Shift+Enter
+     * (it used for capitalizing of the first letter of the next sentence)
+     * We don't need to lead soft line break in this case — new block should be created
      */
-    if (event.shiftKey) {
+    if (event.shiftKey && !_.isIosDevice) {
       return;
     }
 
-    let newCurrent = this.Editor.BlockManager.currentBlock;
+    let blockToFocus = currentBlock;
 
     /**
      * If enter has been pressed at the start of the text, just insert paragraph Block above
      */
-    if (this.Editor.Caret.isAtStart && !this.Editor.BlockManager.currentBlock.hasMedia) {
+    if (currentBlock.currentInput !== undefined && caretUtils.isCaretAtStartOfInput(currentBlock.currentInput) && !currentBlock.hasMedia) {
       this.Editor.BlockManager.insertDefaultBlockAtIndex(this.Editor.BlockManager.currentBlockIndex);
 
     /**
      * If caret is at very end of the block, just append the new block without splitting
      * to prevent unnecessary dom mutation observing
      */
-    } else if (this.Editor.Caret.isAtEnd) {
-      newCurrent = this.Editor.BlockManager.insertDefaultBlockAtIndex(this.Editor.BlockManager.currentBlockIndex + 1);
+    } else if (currentBlock.currentInput && caretUtils.isCaretAtEndOfInput(currentBlock.currentInput)) {
+      blockToFocus = this.Editor.BlockManager.insertDefaultBlockAtIndex(this.Editor.BlockManager.currentBlockIndex + 1);
     } else {
       /**
        * Split the Current Block into two blocks
        * Renew local current node after split
        */
-      newCurrent = this.Editor.BlockManager.split();
+      blockToFocus = this.Editor.BlockManager.split();
     }
 
-    this.Editor.Caret.setToBlock(newCurrent);
+    this.Editor.Caret.setToBlock(blockToFocus);
 
     /**
      * Show Toolbar
      */
-    this.Editor.Toolbar.moveAndOpen(newCurrent);
+    this.Editor.Toolbar.moveAndOpen(blockToFocus);
 
     event.preventDefault();
   }
@@ -325,6 +348,10 @@ export default class BlockEvents extends Module {
     const { BlockManager, Caret } = this.Editor;
     const { currentBlock, previousBlock } = BlockManager;
 
+    if (currentBlock === undefined) {
+      return;
+    }
+
     /**
      * If some fragment is selected, leave native behaviour
      */
@@ -335,7 +362,7 @@ export default class BlockEvents extends Module {
     /**
      * If caret is not at the start, leave native behaviour
      */
-    if (!Caret.isAtStart) {
+    if (!currentBlock.currentInput || !caretUtils.isCaretAtStartOfInput(currentBlock.currentInput)) {
       return;
     }
     /**
@@ -384,7 +411,7 @@ export default class BlockEvents extends Module {
       return;
     }
 
-    const bothBlocksMergeable = areBlocksMergeable(currentBlock, previousBlock);
+    const bothBlocksMergeable = areBlocksMergeable(previousBlock, currentBlock);
 
     /**
      * If Blocks could be merged, do it
@@ -418,7 +445,7 @@ export default class BlockEvents extends Module {
     /**
      * If caret is not at the end, leave native behaviour
      */
-    if (!Caret.isAtEnd) {
+    if (!caretUtils.isCaretAtEndOfInput(currentBlock.currentInput)) {
       return;
     }
 
@@ -486,19 +513,18 @@ export default class BlockEvents extends Module {
    * @param blockToMerge - what Block we want to merge
    */
   private mergeBlocks(targetBlock: Block, blockToMerge: Block): void {
-    const { BlockManager, Caret, Toolbar } = this.Editor;
+    const { BlockManager, Toolbar } = this.Editor;
 
-    Caret.createShadow(targetBlock.pluginsContent);
+    if (targetBlock.lastInput === undefined) {
+      return;
+    }
+
+    focus(targetBlock.lastInput, false);
 
     BlockManager
       .mergeBlocks(targetBlock, blockToMerge)
       .then(() => {
-        window.requestAnimationFrame(() => {
-          /** Restore caret position after merge */
-          Caret.restoreCaret(targetBlock.pluginsContent as HTMLElement);
-          targetBlock.pluginsContent.normalize();
-          Toolbar.close();
-        });
+        Toolbar.close();
       });
   }
 
@@ -524,7 +550,9 @@ export default class BlockEvents extends Module {
      */
     this.Editor.Toolbar.close();
 
-    const shouldEnableCBS = this.Editor.Caret.isAtEnd || this.Editor.BlockSelection.anyBlockSelected;
+    const { currentBlock } = this.Editor.BlockManager;
+    const caretAtEnd = currentBlock?.currentInput !== undefined ? caretUtils.isCaretAtEndOfInput(currentBlock.currentInput) : undefined;
+    const shouldEnableCBS = caretAtEnd || this.Editor.BlockSelection.anyBlockSelected;
 
     if (event.shiftKey && event.keyCode === _.keyCodes.DOWN && shouldEnableCBS) {
       this.Editor.CrossBlockSelection.toggleBlockSelectedState();
@@ -584,7 +612,9 @@ export default class BlockEvents extends Module {
      */
     this.Editor.Toolbar.close();
 
-    const shouldEnableCBS = this.Editor.Caret.isAtStart || this.Editor.BlockSelection.anyBlockSelected;
+    const { currentBlock } = this.Editor.BlockManager;
+    const caretAtStart = currentBlock?.currentInput !== undefined ? caretUtils.isCaretAtStartOfInput(currentBlock.currentInput) : undefined;
+    const shouldEnableCBS = caretAtStart || this.Editor.BlockSelection.anyBlockSelected;
 
     if (event.shiftKey && event.keyCode === _.keyCodes.UP && shouldEnableCBS) {
       this.Editor.CrossBlockSelection.toggleBlockSelectedState(false);
@@ -630,7 +660,6 @@ export default class BlockEvents extends Module {
     const toolboxItemSelected = (event.keyCode === _.keyCodes.ENTER && this.Editor.Toolbar.toolbox.opened),
         blockSettingsItemSelected = (event.keyCode === _.keyCodes.ENTER && this.Editor.BlockSettings.opened),
         inlineToolbarItemSelected = (event.keyCode === _.keyCodes.ENTER && this.Editor.InlineToolbar.opened),
-        conversionToolbarItemSelected = (event.keyCode === _.keyCodes.ENTER && this.Editor.ConversionToolbar.opened),
         flippingToolbarItems = event.keyCode === _.keyCodes.TAB;
 
     /**
@@ -643,8 +672,7 @@ export default class BlockEvents extends Module {
       flippingToolbarItems ||
       toolboxItemSelected ||
       blockSettingsItemSelected ||
-      inlineToolbarItemSelected ||
-      conversionToolbarItemSelected
+      inlineToolbarItemSelected
     );
   }
 

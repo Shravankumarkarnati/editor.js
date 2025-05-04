@@ -1,21 +1,20 @@
-import { ToolConfig } from '../../../../types';
-import { Tools } from '../../../../types/api';
-import * as _ from '../../utils';
+import type { Tools as ToolsAPIInterface } from '../../../../types/api';
 import Module from '../../__module';
+import type { ToolConfig } from '../../../../types';
+import * as _ from '../../utils';
 
 /**
- * @class ToolsAPI
- * Provides methods for working with the Tools
+ * Provides methods for accessing installed Editor tools
  */
 export default class ToolsAPI extends Module {
   /**
    * Available methods
-   *
-   * @returns {Tools}
    */
-  public get methods(): Tools {
+  public get methods(): ToolsAPIInterface {
     return {
-      updateToolConfig: (toolName: string, config: ToolConfig) => this.updateToolConfig(toolName, config),
+      getBlockTools: () => Array.from(this.Editor.Tools.blockTools.values()),
+      updateToolConfig: (toolName: string, config: ToolConfig) =>
+        this.updateToolConfig(toolName, config),
     };
   }
 

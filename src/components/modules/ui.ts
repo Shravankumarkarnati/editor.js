@@ -5,7 +5,7 @@
  * @type {UI}
  */
 import Module from '../__module';
-import $ from '../dom';
+import $, { toggleEmptyMark } from '../dom';
 import * as _ from '../utils';
 
 import Selection from '../selection';
@@ -15,6 +15,8 @@ import { mobileScreenBreakpoint } from '../utils';
 
 import styles from '../../styles/main.css?inline';
 import { BlockHovered } from '../events/BlockHovered';
+import { selectionChangeDebounceTimeout } from '../constants';
+import { EditorMobileLayoutToggled } from '../events';
 /**
  * HTML Elements used for UI
  */
@@ -66,7 +68,7 @@ export default class UI extends Module<UINodes> {
    * @returns {DOMRect}
    */
   public get contentRect(): DOMRect {
-    if (this.contentRectCache) {
+    if (this.contentRectCache !== null) {
       return this.contentRectCache;
     }
 
@@ -83,7 +85,7 @@ export default class UI extends Module<UINodes> {
       } as DOMRect;
     }
 
-    this.contentRectCache = someBlock.getBoundingClientRect() as DOMRect;
+    this.contentRectCache = someBlock.getBoundingClientRect();
 
     return this.contentRectCache;
   }
@@ -95,13 +97,14 @@ export default class UI extends Module<UINodes> {
    */
   public isMobile = false;
 
+
   /**
    * Cache for center column rectangle info
    * Invalidates on window resize
    *
    * @type {DOMRect}
    */
-  private contentRectCache: DOMRect = undefined;
+  private contentRectCache: DOMRect | null = null;
 
   /**
    * Handle window resize only when it finished
@@ -114,13 +117,20 @@ export default class UI extends Module<UINodes> {
   }, 200);
 
   /**
+   * Handle selection change to manipulate Inline Toolbar appearance
+   */
+  private selectionChangeDebounced = _.debounce(() => {
+    this.selectionChanged();
+  }, selectionChangeDebounceTimeout);
+
+  /**
    * Making main interface
    */
   public async prepare(): Promise<void> {
     /**
      * Detect mobile version
      */
-    this.checkIsMobile();
+    this.setIsMobile();
 
     /**
      * Make main UI elements
@@ -156,7 +166,7 @@ export default class UI extends Module<UINodes> {
         /**
          * Bind events for the UI elements
          */
-        this.enableModuleBindings();
+        this.bindReadOnlySensitiveListeners();
       }, {
         timeout: 2000,
       });
@@ -165,7 +175,7 @@ export default class UI extends Module<UINodes> {
        * Unbind all events
        *
        */
-      this.disableModuleBindings();
+      this.unbindReadOnlySensitiveListeners();
     }
   }
 
@@ -185,9 +195,9 @@ export default class UI extends Module<UINodes> {
    * @returns {boolean}
    */
   public get someToolbarOpened(): boolean {
-    const { Toolbar, BlockSettings, InlineToolbar, ConversionToolbar } = this.Editor;
+    const { Toolbar, BlockSettings, InlineToolbar } = this.Editor;
 
-    return BlockSettings.opened || InlineToolbar.opened || ConversionToolbar.opened || Toolbar.toolbox.opened;
+    return Boolean(BlockSettings.opened || InlineToolbar.opened || Toolbar.toolbox.opened);
   }
 
   /**
@@ -218,25 +228,46 @@ export default class UI extends Module<UINodes> {
    */
   public destroy(): void {
     this.nodes.holder.innerHTML = '';
+
+    this.unbindReadOnlyInsensitiveListeners();
   }
 
   /**
    * Close all Editor's toolbars
    */
   public closeAllToolbars(): void {
-    const { Toolbar, BlockSettings, InlineToolbar, ConversionToolbar } = this.Editor;
+    const { Toolbar, BlockSettings, InlineToolbar } = this.Editor;
 
     BlockSettings.close();
     InlineToolbar.close();
-    ConversionToolbar.close();
     Toolbar.toolbox.close();
   }
 
   /**
-   * Check for mobile mode and cache a result
+   * Event listener for 'mousedown' and 'touchstart' events
+   *
+   * @param event - TouchEvent or MouseEvent
    */
-  private checkIsMobile(): void {
-    this.isMobile = window.innerWidth < mobileScreenBreakpoint;
+  private documentTouchedListener = (event: Event): void => {
+    this.documentTouched(event);
+  };
+
+  /**
+   * Check for mobile mode and save the result
+   */
+  private setIsMobile(): void {
+    const isMobile = window.innerWidth < mobileScreenBreakpoint;
+
+    if (isMobile !== this.isMobile) {
+      /**
+       * Dispatch global event
+       */
+      this.eventsDispatcher.emit(EditorMobileLayoutToggled, {
+        isEnabled: this.isMobile,
+      });
+    }
+
+    this.isMobile = isMobile;
   }
 
   /**
@@ -275,6 +306,8 @@ export default class UI extends Module<UINodes> {
 
     this.nodes.wrapper.appendChild(this.nodes.redactor);
     this.nodes.holder.appendChild(this.nodes.wrapper);
+
+    this.bindReadOnlyInsensitiveListeners();
   }
 
   /**
@@ -318,26 +351,44 @@ export default class UI extends Module<UINodes> {
   }
 
   /**
-   * Bind events on the Editor.js interface
+   * Adds listeners that should work both in read-only and read-write modes
    */
-  private enableModuleBindings(): void {
+  private bindReadOnlyInsensitiveListeners(): void {
+    this.listeners.on(document, 'selectionchange', this.selectionChangeDebounced);
+
+    this.listeners.on(window, 'resize', this.resizeDebouncer, {
+      passive: true,
+    });
+
+    this.listeners.on(this.nodes.redactor, 'mousedown', this.documentTouchedListener, {
+      capture: true,
+      passive: true,
+    });
+
+    this.listeners.on(this.nodes.redactor, 'touchstart', this.documentTouchedListener, {
+      capture: true,
+      passive: true,
+    });
+  }
+
+  /**
+   * Removes listeners that should work both in read-only and read-write modes
+   */
+  private unbindReadOnlyInsensitiveListeners(): void {
+    this.listeners.off(document, 'selectionchange', this.selectionChangeDebounced);
+    this.listeners.off(window, 'resize', this.resizeDebouncer);
+    this.listeners.off(this.nodes.redactor, 'mousedown', this.documentTouchedListener);
+    this.listeners.off(this.nodes.redactor, 'touchstart', this.documentTouchedListener);
+  }
+
+
+  /**
+   * Adds listeners that should work only in read-only mode
+   */
+  private bindReadOnlySensitiveListeners(): void {
     this.readOnlyMutableListeners.on(this.nodes.redactor, 'click', (event: MouseEvent) => {
       this.redactorClicked(event);
     }, false);
-
-    this.readOnlyMutableListeners.on(this.nodes.redactor, 'mousedown', (event: MouseEvent | TouchEvent) => {
-      this.documentTouched(event);
-    }, {
-      capture: true,
-      passive: true,
-    });
-
-    this.readOnlyMutableListeners.on(this.nodes.redactor, 'touchstart', (event: MouseEvent | TouchEvent) => {
-      this.documentTouched(event);
-    }, {
-      capture: true,
-      passive: true,
-    });
 
     this.readOnlyMutableListeners.on(document, 'keydown', (event: KeyboardEvent) => {
       this.documentKeydown(event);
@@ -348,26 +399,17 @@ export default class UI extends Module<UINodes> {
     }, true);
 
     /**
-     * Handle selection change to manipulate Inline Toolbar appearance
-     */
-    const selectionChangeDebounceTimeout = 180;
-    const selectionChangeDebounced = _.debounce(() => {
-      this.selectionChanged();
-    }, selectionChangeDebounceTimeout);
-
-    this.readOnlyMutableListeners.on(document, 'selectionchange', selectionChangeDebounced, true);
-
-    this.readOnlyMutableListeners.on(window, 'resize', () => {
-      this.resizeDebouncer();
-    }, {
-      passive: true,
-    });
-
-    /**
      * Start watching 'block-hovered' events that is used by Toolbar for moving
      */
     this.watchBlockHoveredEvents();
+
+    /**
+     * We have custom logic for providing placeholders for contenteditable elements.
+     * To make it work, we need to have data-empty mark on empty inputs.
+     */
+    this.enableInputsEmptyMark();
   }
+
 
   /**
    * Listen redactor mousemove to emit 'block-hovered' event
@@ -408,9 +450,9 @@ export default class UI extends Module<UINodes> {
   }
 
   /**
-   * Unbind events on the Editor.js interface
+   * Unbind events that should work only in read-only mode
    */
-  private disableModuleBindings(): void {
+  private unbindReadOnlySensitiveListeners(): void {
     this.readOnlyMutableListeners.clearAll();
   }
 
@@ -426,7 +468,7 @@ export default class UI extends Module<UINodes> {
     /**
      * Detect mobile version
      */
-    this.checkIsMobile();
+    this.setIsMobile();
   }
 
   /**
@@ -484,7 +526,7 @@ export default class UI extends Module<UINodes> {
     /**
      * Remove all highlights and remove caret
      */
-    this.Editor.BlockManager.dropPointer();
+    this.Editor.BlockManager.unsetCurrentBlock();
 
     /**
      * Close Toolbar
@@ -540,8 +582,6 @@ export default class UI extends Module<UINodes> {
       this.Editor.Caret.setToBlock(this.Editor.BlockManager.currentBlock, this.Editor.Caret.positions.END);
     } else if (this.Editor.BlockSettings.opened) {
       this.Editor.BlockSettings.close();
-    } else if (this.Editor.ConversionToolbar.opened) {
-      this.Editor.ConversionToolbar.close();
     } else if (this.Editor.InlineToolbar.opened) {
       this.Editor.InlineToolbar.close();
     } else {
@@ -556,6 +596,11 @@ export default class UI extends Module<UINodes> {
    */
   private enterPressed(event: KeyboardEvent): void {
     const { BlockManager, BlockSelection } = this.Editor;
+
+    if (this.someToolbarOpened) {
+      return;
+    }
+
     const hasPointerToBlock = BlockManager.currentBlockIndex >= 0;
 
     /**
@@ -591,6 +636,10 @@ export default class UI extends Module<UINodes> {
        */
       const newBlock = this.Editor.BlockManager.insert();
 
+      /**
+       * Prevent default enter behaviour to prevent adding a new line (<div><br></div>) to the inserted block
+       */
+      event.preventDefault();
       this.Editor.Caret.setToBlock(newBlock);
 
       /**
@@ -624,12 +673,12 @@ export default class UI extends Module<UINodes> {
 
     if (!clickedInsideOfEditor) {
       /**
-       * Clear highlights and pointer on BlockManager
+       * Clear pointer on BlockManager
        *
        * Current page might contain several instances
        * Click between instances MUST clear focus, pointers and close toolbars
        */
-      this.Editor.BlockManager.dropPointer();
+      this.Editor.BlockManager.unsetCurrentBlock();
       this.Editor.Toolbar.close();
     }
 
@@ -666,17 +715,17 @@ export default class UI extends Module<UINodes> {
    * - Move and show the Toolbar
    * - Set a Caret
    *
-   * @param {MouseEvent | TouchEvent} event - touch or mouse event
+   * @param event - touch or mouse event
    */
-  private documentTouched(event: MouseEvent | TouchEvent): void {
+  private documentTouched(event: Event): void {
     let clickedNode = event.target as HTMLElement;
 
     /**
      * If click was fired on Editor`s wrapper, try to get clicked node by elementFromPoint method
      */
     if (clickedNode === this.nodes.redactor) {
-      const clientX = event instanceof MouseEvent ? event.clientX : event.touches[0].clientX;
-      const clientY = event instanceof MouseEvent ? event.clientY : event.touches[0].clientY;
+      const clientX = event instanceof MouseEvent ? event.clientX : (event as TouchEvent).touches[0].clientX;
+      const clientY = event instanceof MouseEvent ? event.clientY : (event as TouchEvent).touches[0].clientY;
 
       clickedNode = document.elementFromPoint(clientX, clientY) as HTMLElement;
     }
@@ -699,7 +748,9 @@ export default class UI extends Module<UINodes> {
      * Move and open toolbar
      * (used for showing Block Settings toggler after opening and closing Inline Toolbar)
      */
-    this.Editor.Toolbar.moveAndOpen();
+    if (!this.Editor.ReadOnly.isEnabled) {
+      this.Editor.Toolbar.moveAndOpen();
+    }
   }
 
   /**
@@ -820,9 +871,11 @@ export default class UI extends Module<UINodes> {
 
     /**
      * Event can be fired on clicks at non-block-content elements,
-     * for example, at the Inline Toolbar or some Block Tune element
+     * for example, at the Inline Toolbar or some Block Tune element.
+     * We also make sure that the closest block belongs to the current editor and not a parent
      */
-    const clickedOutsideBlockContent = focusedElement.closest(`.${Block.CSS.content}`) === null;
+    const closestBlock = focusedElement.closest(`.${Block.CSS.content}`);
+    const clickedOutsideBlockContent = closestBlock === null || (closestBlock.closest(`.${Selection.CSS.editorWrapper}`) !== this.nodes.wrapper);
 
     if (clickedOutsideBlockContent) {
       /**
@@ -851,8 +904,30 @@ export default class UI extends Module<UINodes> {
       this.Editor.BlockManager.setCurrentBlockByChildNode(focusedElement);
     }
 
-    const isNeedToShowConversionToolbar = clickedOutsideBlockContent !== true;
+    this.Editor.InlineToolbar.tryToShow(true);
+  }
 
-    this.Editor.InlineToolbar.tryToShow(true, isNeedToShowConversionToolbar);
+  /**
+   * Editor.js provides and ability to show placeholders for empty contenteditable elements
+   *
+   * This method watches for input and focus events and toggles 'data-empty' attribute
+   * to workaroud the case, when inputs contains only <br>s and has no visible content
+   * Then, CSS could rely on this attribute to show placeholders
+   */
+  private enableInputsEmptyMark(): void {
+    /**
+     * Toggle data-empty attribute on input depending on its emptiness
+     *
+     * @param event - input or focus event
+     */
+    function handleInputOrFocusChange(event: Event): void {
+      const input = event.target as HTMLElement;
+
+      toggleEmptyMark(input);
+    }
+
+    this.readOnlyMutableListeners.on(this.nodes.wrapper, 'input', handleInputOrFocusChange);
+    this.readOnlyMutableListeners.on(this.nodes.wrapper, 'focusin', handleInputOrFocusChange);
+    this.readOnlyMutableListeners.on(this.nodes.wrapper, 'focusout', handleInputOrFocusChange);
   }
 }
