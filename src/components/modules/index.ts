@@ -57,7 +57,6 @@ export default {
   StylesAPI,
   ToolbarAPI,
   TooltipAPI,
-  ToolsAPI,
   UiAPI,
 
   // Toolbar Modules
